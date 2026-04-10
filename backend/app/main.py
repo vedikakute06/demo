@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
+from fastapi.staticfiles import StaticFiles
 from app.database import connect_to_mongo, close_mongo_connection
 from contextlib import asynccontextmanager
 from app.schemas.risk_schema import RiskRequest, RiskResponse
@@ -11,7 +13,31 @@ async def lifespan(app: FastAPI):
     yield
     await close_mongo_connection()
 
-app = FastAPI(title="Website Backend", description="FastAPI Backend with MongoDB", version="1.0.0", lifespan=lifespan)
+app = FastAPI(
+    title="Website Backend",
+    description="FastAPI Backend with MongoDB",
+    version="1.0.0",
+    lifespan=lifespan,
+    docs_url=None,   # Disable default docs (they load from CDN)
+    redoc_url=None,   # Disable default redoc
+)
+
+@app.get("/docs", include_in_schema=False)
+async def custom_swagger_ui_html():
+    return get_swagger_ui_html(
+        openapi_url=app.openapi_url,
+        title=app.title + " - Swagger UI",
+        swagger_js_url="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js",
+        swagger_css_url="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css",
+    )
+
+@app.get("/redoc", include_in_schema=False)
+async def redoc_html():
+    return get_redoc_html(
+        openapi_url=app.openapi_url,
+        title=app.title + " - ReDoc",
+        redoc_js_url="https://unpkg.com/redoc@next/bundles/redoc.standalone.js",
+    )
 
 # Setup CORS for frontend
 app.add_middleware(
@@ -24,6 +50,8 @@ app.add_middleware(
 
 from app.routes.user import router as user_router
 from app.routes.ml import router as ml_router
+from app.routes.goal import router as goal_router
+from app.routes.financial_health import router as financial_health_router
 
 @app.get("/")
 async def root():
@@ -40,3 +68,5 @@ def get_risk(data: RiskRequest):
 
 app.include_router(user_router)
 app.include_router(ml_router)
+app.include_router(goal_router)
+app.include_router(financial_health_router)
