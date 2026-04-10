@@ -21,6 +21,7 @@ app.add_middleware(
 )
 
 from app.routes.user import router as user_router
+from app.routes.ml import router as ml_router
 
 @app.get("/")
 async def root():
@@ -31,4 +32,4 @@ async def health_check():
     return {"status": "ok"}
 
 app.include_router(user_router)
-
+app.include_router(ml_router)
