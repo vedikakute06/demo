@@ -2,6 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import connect_to_mongo, close_mongo_connection
 from contextlib import asynccontextmanager
+from app.schemas.risk_schema import RiskRequest, RiskResponse
+from app.services.risk_service import compute_risk
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -29,6 +31,11 @@ async def root():
 @app.get("/api/health")
 async def health_check():
     return {"status": "ok"}
+
+@app.post("/risk", response_model=RiskResponse)
+def get_risk(data: RiskRequest):
+    result = compute_risk(data)
+    return result
 
 app.include_router(user_router)
 
