@@ -52,6 +52,7 @@ from app.routes.user import router as user_router
 from app.routes.ml import router as ml_router
 from app.routes.goal import router as goal_router
 from app.routes.financial_health import router as financial_health_router
+from app.routes.behavior import router as behavior_router
 
 @app.get("/")
 async def root():
@@ -70,3 +71,4 @@ app.include_router(user_router)
 app.include_router(ml_router)
 app.include_router(goal_router)
 app.include_router(financial_health_router)
+app.include_router(behavior_router)
