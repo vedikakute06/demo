@@ -35,7 +35,7 @@ export default function Signup() {
   return (
     <div className="auth-screen">
       <div className="auth-card">
-        <div className="auth-logo">FinSense AI</div>
+        <div className="auth-logo">WealthLens</div>
         <div className="auth-tagline">Create your free account</div>
         {error && <div className="auth-error">{error}</div>}
         <form onSubmit={handleSubmit}>

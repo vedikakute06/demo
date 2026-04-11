@@ -19,12 +19,19 @@ async def generate_investment_recommendation(user_id: str):
     # ✅ Get finance
     finance = await db["finance"].find_one({"user_id": user_id})
 
-    if not finance:
-        return {"error": "No financial data found"}
+    if finance:
+        income = finance.get("monthly_income", 0)
+        expenses = finance.get("total_expenses", 0)
+        savings = finance.get("monthly_savings", 0)
+    else:
+        # Fallback: compute from user profile + transactions
+        income = user.get("monthly_income", 0) or 0
+        transactions = await db["transactions"].find({"user_id": user_id}).to_list(100)
+        expenses = sum(t["amount"] for t in transactions if t.get("type") == "expense")
+        savings = income - expenses
 
-    income = finance.get("monthly_income", 0)
-    expenses = finance.get("total_expenses", 0)
-    savings = finance.get("monthly_savings", 0)
+    if income == 0 and expenses == 0:
+        return {"error": "No financial data found. Please add transactions or update your profile with income."}
 
     # 📊 Ratios
     expense_ratio = expenses / income if income else 0

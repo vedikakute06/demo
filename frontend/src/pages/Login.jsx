@@ -40,7 +40,7 @@ export default function Login() {
   return (
     <div className="auth-screen">
       <div className="auth-card">
-        <div className="auth-logo">FinSense AI</div>
+        <div className="auth-logo">WealthLens</div>
         <div className="auth-tagline">Your intelligent personal finance companion</div>
         {error && <div className="auth-error">{error}</div>}
         <form onSubmit={handleSubmit}>

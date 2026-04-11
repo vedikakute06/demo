@@ -117,8 +117,8 @@ export default function Sidebar() {
   return (
     <div className="sidebar">
       <div className="sidebar-logo">
-        <div className="logo-text">FinSense AI</div>
-        <div className="logo-sub">Personal Finance</div>
+        <div className="logo-text">WealthLens</div>
+        <div className="logo-sub">Intelligence</div>
       </div>
       <nav className="nav">
         {navItems.map((item) => (

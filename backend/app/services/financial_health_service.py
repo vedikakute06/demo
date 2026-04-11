@@ -65,9 +65,9 @@ class FinancialHealthService:
         spending_score = max(100 - (high_spend_ratio * 100), 0)
 
         # 🔹 Risk Score (30%)
-        if emergency_fund >= 6 * monthly_expense:
+        if emergency_fund >= 3 * monthly_expense:
             risk_score = 100
-        elif emergency_fund >= 3 * monthly_expense:
+        elif emergency_fund >= 1 * monthly_expense:
             risk_score = 70
         else:
             risk_score = 40

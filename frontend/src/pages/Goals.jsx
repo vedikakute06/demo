@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getGoals, createGoal } from '../services/api';
+import { getGoals, createGoal, payGoal } from '../services/api';
 
 export default function Goals() {
   const { user } = useAuth();
@@ -9,6 +9,9 @@ export default function Goals() {
   const [goals, setGoals] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ title: '', goal_type: 'travel', target_amount: '', deadline: '' });
+  const [payAmounts, setPayAmounts] = useState({}); // { goalId: '5000' }
+  const [payingId, setPayingId] = useState(null); // goalId currently paying
+  const [toast, setToast] = useState('');
 
   useEffect(() => {
     if (user?.user_id) fetchGoals();
@@ -35,12 +38,50 @@ export default function Goals() {
     }
   };
 
+  const handlePay = async (goalId) => {
+    const amount = parseFloat(payAmounts[goalId]);
+    if (!amount || amount <= 0) return;
+
+    setPayingId(goalId);
+    try {
+      const res = await payGoal(goalId, amount);
+      console.log('Pay response:', res.data);
+
+      // Update goal in local state immediately for instant feedback
+      setGoals(prev => prev.map(g => {
+        if (g._id === goalId) {
+          return {
+            ...g,
+            current_saved: res.data.new_saved,
+            status: res.data.status,
+          };
+        }
+        return g;
+      }));
+
+      // Clear the input
+      setPayAmounts(prev => ({ ...prev, [goalId]: '' }));
+
+      // Show success toast
+      setToast(`₹${amount.toLocaleString('en-IN')} saved towards goal!`);
+      setTimeout(() => setToast(''), 3000);
+    } catch (err) {
+      console.error('Payment failed:', err);
+      setToast('Payment failed. Try again.');
+      setTimeout(() => setToast(''), 3000);
+    }
+    setPayingId(null);
+  };
+
   const displayGoals = goals;
   const iconMap = { travel: '✈️', gadget: '📱', emergency: '🏠', vehicle: '🚗', investment: '📈', other: '📦' };
   const bgMap = { travel: '#e6f1fb', gadget: '#eaf3de', emergency: '#faeeda', vehicle: '#e6f1fb', investment: '#eaf3de', other: '#f0f4fa' };
 
   return (
     <div className="page">
+      {/* Toast */}
+      {toast && <div className="toast">{toast}</div>}
+
       <div className="topbar">
         <div>
           <div className="page-title">Goals</div>
@@ -91,11 +132,12 @@ export default function Goals() {
           const saved = g.current_saved || 0;
           const target = g.target_amount || 1;
           const progress = Math.min(Math.round((saved / target) * 100), 100);
-          const remaining = target - saved;
-          const isBehind = g.status === 'behind' || progress < 40;
+          const remaining = Math.max(target - saved, 0);
+          const isBehind = g.status === 'behind' || (g.status !== 'completed' && progress < 40);
+          const isCompleted = g.status === 'completed' || progress >= 100;
 
           return (
-            <div className="card" key={g._id}>
+            <div className="card" key={g._id} style={isCompleted ? { borderColor: '#3b6d11', borderWidth: '1px' } : {}}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
                 <div className="goal-icon" style={{ background: bgMap[g.goal_type] || '#e6f1fb', width: '40px', height: '40px', fontSize: '18px' }}>
                   {iconMap[g.goal_type] || '📦'}
@@ -105,23 +147,61 @@ export default function Goals() {
                   <div style={{ fontSize: '11px', color: 'var(--muted)' }}>Target: {g.deadline}</div>
                 </div>
                 <div style={{ marginLeft: 'auto' }}>
-                  <span className={`risk-badge ${isBehind ? 'risk-med' : 'risk-low'}`}>
-                    {isBehind ? 'Behind' : 'On track'}
+                  <span className={`risk-badge ${isCompleted ? 'risk-low' : isBehind ? 'risk-med' : 'risk-low'}`}>
+                    {isCompleted ? '✅ Done' : isBehind ? 'Behind' : 'On track'}
                   </span>
                 </div>
               </div>
+
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                 <span style={{ fontSize: '12px', color: 'var(--muted)' }}>Saved</span>
                 <span style={{ fontSize: '12px', fontWeight: '500', color: 'var(--navy)' }}>
                   ₹{saved.toLocaleString('en-IN')} / ₹{target.toLocaleString('en-IN')}
                 </span>
               </div>
+
               <div className="prog-bar" style={{ height: '8px', marginBottom: '8px' }}>
-                <div className="prog-fill" style={{ width: `${progress}%`, background: isBehind ? '#ef9f27' : 'var(--navy2)' }}></div>
+                <div className="prog-fill" style={{
+                  width: `${progress}%`,
+                  background: isCompleted ? '#3b6d11' : isBehind ? '#ef9f27' : 'var(--navy2)',
+                  transition: 'width 0.4s ease'
+                }}></div>
               </div>
-              <div style={{ fontSize: '12px', color: 'var(--muted)' }}>
-                ₹{remaining.toLocaleString('en-IN')} more needed
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isCompleted ? 0 : '12px' }}>
+                <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
+                  {isCompleted ? '🎉 Goal achieved!' : `₹${remaining.toLocaleString('en-IN')} more needed`}
+                </span>
+                <span style={{ fontSize: '12px', fontWeight: '500', color: 'var(--navy2)' }}>{progress}%</span>
               </div>
+
+              {/* Pay towards goal */}
+              {!isCompleted && (
+                <div style={{
+                  display: 'flex', gap: '6px', alignItems: 'center',
+                  paddingTop: '12px', borderTop: '.5px solid #e6f1fb'
+                }}>
+                  <input
+                    type="number"
+                    placeholder="₹ Amount"
+                    value={payAmounts[g._id] || ''}
+                    onChange={(e) => setPayAmounts(prev => ({ ...prev, [g._id]: e.target.value }))}
+                    style={{
+                      flex: 1, border: '.5px solid var(--border)', borderRadius: '8px',
+                      padding: '7px 10px', fontSize: '12px', color: 'var(--navy)',
+                      background: '#fff', fontFamily: 'var(--font)', outline: 'none',
+                    }}
+                  />
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => handlePay(g._id)}
+                    disabled={payingId === g._id || !payAmounts[g._id]}
+                    style={{ fontSize: '11px', padding: '7px 14px', whiteSpace: 'nowrap' }}
+                  >
+                    {payingId === g._id ? '...' : '💰 Pay'}
+                  </button>
+                </div>
+              )}
             </div>
           );
         })}

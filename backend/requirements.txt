@@ -12,3 +12,4 @@ numpy
 email-validator
 google-auth
 requests
+groq

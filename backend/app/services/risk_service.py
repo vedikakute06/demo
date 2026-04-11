@@ -1,6 +1,30 @@
+import os
 from app.database import get_database
 from datetime import datetime
 from bson import ObjectId
+import smtplib
+from email.mime.text import MIMEText
+import asyncio
+
+def send_alert_email(user_email: str, score: int, alerts: list):
+    sender_email = os.getenv("EMAIL_SENDER", "your_email@gmail.com")
+    sender_password = os.getenv("EMAIL_PASSWORD", "app_password")
+
+    alert_text = "\n".join([f"- {a}" for a in alerts])
+    body = f"Hello,\n\nYour financial risk score has dropped to {score}/100 and is now considered HIGH RISK.\n\nActive Alerts:\n{alert_text}\n\nPlease review your dashboard and consider adjusting your budget.\n\nRegards,\nYour Financial AI Advisor"
+
+    msg = MIMEText(body)
+    msg['Subject'] = "Critical Financial Risk Alert"
+    msg['From'] = sender_email
+    msg['To'] = user_email
+
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(sender_email, sender_password)
+            server.send_message(msg)
+        print(f"Risk alert email sent to {user_email}")
+    except Exception as e:
+        print(f"Failed to send email to {user_email}: {e}")
 
 async def compute_risk(user_id: str):
     db = get_database()
@@ -36,27 +60,31 @@ async def compute_risk(user_id: str):
 
     alerts = []
 
-    # 📊 Ratios
     expense_ratio = expenses / income if income else 0
     savings_ratio = savings / income if income else 0
 
-    # 🔴 Overspending
-    if expense_ratio > 0.8:
+  
+    if expense_ratio > 0.6:
         alerts.append("Overspending detected")
+    elif expense_ratio >= 0.4:
+        alerts.append("Moderate spending warnings")
 
-    # 🔴 Low savings
-    if savings_ratio < 0.2:
+   
+    if savings_ratio <= 0.25:
         alerts.append("Low savings rate")
+    elif savings_ratio <= 0.4:
+        alerts.append("savings below recommended level")
 
-    # 🔮 Future risk
+   
     months_to_risk = None
+
 
     if savings > 0 and expenses > savings:
         months_to_risk = int(savings / (expenses - savings))
         if months_to_risk < 3:
             alerts.append(f"Risk of running out of funds in {months_to_risk} months")
 
-    # 🎯 Score
+
     score = 100
 
     if expense_ratio > 0.8:
@@ -68,9 +96,13 @@ async def compute_risk(user_id: str):
 
     score = max(score, 0)
 
-    # 🎯 Level
+  
     if score < 40:
         level = "High"
+        user_email = user.get("email")
+        # Trigger email alert for high risk score
+        if user_email:
+            asyncio.create_task(asyncio.to_thread(send_alert_email, user_email, score, alerts))
     elif score < 70:
         level = "Medium"
     else:

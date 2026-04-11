@@ -14,6 +14,8 @@ from app.routes.user_feature import router as user_feature_router
 from app.routes.budget import router as budget_router
 from app.routes.user import router as user_router
 from app.routes.emergency_fund import router as emergency_router
+from app.routes.ai import router as ai_router
+from app.routes.upload_routes import router as upload_router
 
 print("main.py LOADED")
 
@@ -55,6 +57,8 @@ app.include_router(user_feature_router)
 app.include_router(budget_router)
 app.include_router(user_router)
 app.include_router(emergency_router)
+app.include_router(ai_router)
+app.include_router(upload_router)
 # ✅ TEST ROUTES
 @app.get("/")
 async def root():

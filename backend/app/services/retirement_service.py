@@ -37,6 +37,15 @@ async def generate_retirement_plan(user_id: str, data: dict):
     monthly_investment = 0
     if finance:
         monthly_investment = finance.get("monthly_savings", 0)
+    else:
+        # Fallback: compute from user profile income - transaction expenses
+        user_income = user.get("monthly_income", 0) or 0
+        txns = await db["transactions"].find({"user_id": user_id}).to_list(100)
+        total_expenses = sum(t["amount"] for t in txns if t.get("type") == "expense")
+        monthly_investment = user_income - total_expenses
+
+    # Clamp: can't invest negative money
+    monthly_investment = max(0, monthly_investment)
 
     # 🎯 Risk-based return
     risk = user.get("risk_profile", "medium")

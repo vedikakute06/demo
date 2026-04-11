@@ -25,9 +25,22 @@ export const addTransaction = (data) =>
 export const getTransactions = (userId) =>
   API.get(`/transactions/${userId}`);
 
+export const uploadTransactions = (userId, file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return API.post(`/upload/transactions?user_id=${userId}`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  });
+};
+
 // Budget
 export const getBudget = (userId, month) =>
   API.get(`/budget/${userId}/${month}`);
+
+export const createBudget = (data) =>
+  API.post('/budget/create', data);
 
 // Goals
 export const getGoals = (userId) =>
@@ -35,6 +48,9 @@ export const getGoals = (userId) =>
 
 export const createGoal = (userId, data) =>
   API.post(`/goals/create/${userId}`, data);
+
+export const payGoal = (goalId, amount) =>
+  API.post(`/goals/pay/${goalId}`, { amount });
 
 // Financial Health
 export const getFinancialHealth = (userId) =>
@@ -77,5 +93,9 @@ export const analyzeRisk = (userId) =>
 
 export const getRisk = (userId) =>
   API.get(`/risk/${userId}`);
+
+// AI Insights (Groq)
+export const getAIInsights = (userId) =>
+  API.post(`/ai/insights/${userId}`);
 
 export default API;

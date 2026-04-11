@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getGoals, getFinancialHealth, addTransaction, getTransactions, getUser } from '../services/api';
+import { getGoals, getFinancialHealth, addTransaction, getTransactions, getUser, analyzeRisk, getAIInsights, uploadTransactions } from '../services/api';
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -10,6 +10,12 @@ export default function Dashboard() {
   const [health, setHealth] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [profile, setProfile] = useState(null);
+  const [riskData, setRiskData] = useState(null);
+
+  // AI Insights States
+  const [aiInsights, setAiInsights] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState('');
 
   // Quick Add Modal States
   const [showQuickAdd, setShowQuickAdd] = useState(false);
@@ -53,6 +59,38 @@ export default function Dashboard() {
     }
   };
 
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    try {
+      await uploadTransactions(user.user_id, file);
+      // Reload stats
+      getTransactions(user.user_id).then(r => setTransactions(r.data || [])).catch(() => {});
+      alert("Transactions uploaded successfully!");
+    } catch (err) {
+      console.error('Failed to upload file:', err);
+      alert('Failed to upload transactions. Make sure it is a valid CSV.');
+    } finally {
+      // Clear input so same file can be uploaded again if needed
+      event.target.value = null;
+    }
+  };
+
+
+  const handleGenerateInsights = async () => {
+    setAiLoading(true);
+    setAiError('');
+    try {
+      const res = await getAIInsights(user.user_id);
+      console.log('AI Insights response:', res.data);
+      setAiInsights(res.data.insights);
+    } catch (err) {
+      console.error('Failed to generate AI insights:', err);
+      setAiError('Failed to generate insights. Please try again.');
+    }
+    setAiLoading(false);
+  };
+
   const firstName = user?.name?.split(' ')[0] || 'User';
   const initials = user?.name
     ? user.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
@@ -60,10 +98,11 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (user?.user_id) {
-      getUser(user.user_id).then(r => setProfile(r.data)).catch(() => {});
-      getGoals(user.user_id).then(r => setGoals(r.data)).catch(() => {});
-      getFinancialHealth(user.user_id).then(r => setHealth(r.data)).catch(() => {});
-      getTransactions(user.user_id).then(r => setTransactions(r.data || [])).catch(() => {});
+      getUser(user.user_id).then(r => { console.log('User profile:', r.data); setProfile(r.data); }).catch(() => {});
+      getGoals(user.user_id).then(r => { console.log('Goals:', r.data); setGoals(r.data); }).catch(() => {});
+      getFinancialHealth(user.user_id).then(r => { console.log('Health:', r.data); setHealth(r.data); }).catch(() => {});
+      getTransactions(user.user_id).then(r => { console.log('Transactions:', r.data); setTransactions(r.data || []); }).catch(() => {});
+      analyzeRisk(user.user_id).then(r => { console.log('Risk:', r.data); setRiskData(r.data); }).catch(() => {});
     }
   }, [user]);
 
@@ -81,28 +120,32 @@ export default function Dashboard() {
     return acc;
   }, {});
 
+  // Build dynamic alert text from risk data
+  const alertCount = riskData?.alerts?.length || 0;
+  const alertText = riskData?.alerts?.length > 0
+    ? riskData.alerts.join(' · ')
+    : 'No active alerts — your finances look healthy!';
+
   return (
     <div className="page">
       {/* TOPBAR */}
       <div className="topbar">
         <div>
           <div className="page-title">Good morning, {firstName} 👋</div>
-          <div className="page-sub">Financial overview · June 2025</div>
+          <div className="page-sub">Financial overview</div>
         </div>
         <div className="topbar-right">
-          <select className="month-select">
-            <option>June 2025</option>
-            <option>May 2025</option>
-          </select>
           <div className="avatar" style={{ cursor: 'pointer' }} onClick={() => navigate('/profile')}>{initials}</div>
         </div>
       </div>
 
-      {/* ALERT BAR */}
-      <div className="alert-bar">
-        <div className="alert-dot"></div>
-        <strong>3 alerts:</strong>&nbsp;Food budget 19% over · Unusual Swiggy spend · SIP due June 30
-      </div>
+      {/* ALERT BAR — Dynamic from Risk API */}
+      {alertCount > 0 && (
+        <div className="alert-bar">
+          <div className="alert-dot"></div>
+          <strong>{alertCount} alert{alertCount !== 1 ? 's' : ''}:</strong>&nbsp;{alertText}
+        </div>
+      )}
 
       {/* STATS GRID */}
       <div className="stats-grid">
@@ -121,12 +164,17 @@ export default function Dashboard() {
           <div className="stat-value">₹{saved.toLocaleString('en-IN')}</div>
           <div className="stat-change up">{savedRate}% rate</div>
         </div>
-        <div className="stat-card">
-          <div className="stat-label">Health Score</div>
-          <div className="stat-value">
-            {healthScore}<span style={{ fontSize: '14px', color: 'var(--muted)' }}>/100</span>
+        <div 
+          className="stat-card" 
+          onClick={() => document.getElementById('csv-upload').click()} 
+          style={{ cursor: 'pointer', background: 'var(--navy2)', color: '#fff' }}
+          title="Click to Upload CSV"
+        >
+          <div className="stat-label" style={{ color: '#fff' }}>Bulk Add Records</div>
+          <div className="stat-value" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fff' }}>
+            <span style={{ fontSize: '24px' }}>⬆️</span> Upload CSV
           </div>
-          <div className="stat-change up">↑ +3 this month</div>
+          <div className="stat-change" style={{ color: '#fff' }}>Click here to upload your file</div>
         </div>
       </div>
 
@@ -208,22 +256,74 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* AI Quick Insights */}
+        {/* AI Insights — Generate Button */}
         <div className="card">
-          <div className="card-title">AI Quick Insights</div>
-          <div className="chip-row">
-            <div className="chip">Can I afford a trip?</div>
-            <div className="chip">Where to save more?</div>
-            <div className="chip">Best SIP for me?</div>
+          <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            AI Insights
+            {aiInsights && (
+              <button
+                className="btn btn-secondary"
+                onClick={handleGenerateInsights}
+                disabled={aiLoading}
+                style={{ fontSize: '11px', padding: '4px 10px' }}
+              >
+                ↻ Refresh
+              </button>
+            )}
           </div>
-          <div className="chat-bubble-me">Where am I overspending this month?</div>
-          <div className="chat-bubble-ai">
-            You're 19% over budget on <strong>Food</strong> (₹9,500 vs ₹8,000). Weekend dining is the main trigger — 6 orders above ₹400 on Fri–Sun. Cutting to 2 weekend orders saves ~₹1,800.
-          </div>
-          <div className="chat-bubble-me">Should I still invest in SIP?</div>
-          <div className="chat-bubble-ai">
-            Yes! After goals allocation (₹8,000), ₹6,000/mo in a Nifty 50 index SIP suits your medium risk profile. Want me to set a reminder?
-          </div>
+
+          {!aiInsights && !aiLoading && !aiError && (
+            <div style={{ textAlign: 'center', padding: '24px 10px' }}>
+              <div style={{ fontSize: '36px', marginBottom: '12px' }}>✨</div>
+              <div style={{ fontSize: '13px', fontWeight: '500', color: 'var(--navy)', marginBottom: '6px' }}>
+                Get personalized financial insights
+              </div>
+              <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '16px', lineHeight: '1.6' }}>
+                Our AI analyzes your transactions, goals, and spending patterns to give you actionable advice.
+              </div>
+              <button className="btn btn-primary" onClick={handleGenerateInsights} style={{ width: '100%', justifyContent: 'center' }}>
+                ✨ Generate AI Insights
+              </button>
+            </div>
+          )}
+
+          {aiLoading && (
+            <div style={{ textAlign: 'center', padding: '40px 10px' }}>
+              <div className="ai-loading-dots">
+                <span></span><span></span><span></span>
+              </div>
+              <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '12px' }}>Analyzing your finances...</div>
+            </div>
+          )}
+
+          {aiError && (
+            <div style={{ textAlign: 'center', padding: '20px 10px' }}>
+              <div style={{ fontSize: '12px', color: '#a32d2d', marginBottom: '12px' }}>{aiError}</div>
+              <button className="btn btn-primary" onClick={handleGenerateInsights} style={{ fontSize: '12px' }}>
+                Try Again
+              </button>
+            </div>
+          )}
+
+          {aiInsights && !aiLoading && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {aiInsights.map((insight, i) => {
+                const badges = [
+                  { bg: '#e6f1fb', color: 'var(--navy2)', label: 'Insight' },
+                  { bg: '#eaf3de', color: '#3b6d11', label: 'Tip' },
+                  { bg: '#faeeda', color: '#854f0b', label: 'Alert' },
+                  { bg: '#fcebeb', color: '#a32d2d', label: 'Action' },
+                ];
+                const badge = badges[i % badges.length];
+                return (
+                  <div className="insight-card" key={i} style={{ padding: '10px 12px', marginBottom: 0 }}>
+                    <div className="insight-badge" style={{ background: badge.bg, color: badge.color }}>{badge.label}</div>
+                    <div className="insight-text">{insight}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
@@ -232,9 +332,19 @@ export default function Dashboard() {
         className="fab" 
         onClick={() => setShowQuickAdd(!showQuickAdd)} 
         style={{ left: '224px', background: 'var(--navy2)', color: '#fff', fontSize: '28px', fontWeight: '300' }}
+        title="Add Expense"
       >
         +
       </button>
+
+      {/* CSV UPLOAD HIDDEN INPUT */}
+      <input
+        type="file"
+        accept=".csv"
+        id="csv-upload"
+        style={{ display: 'none' }}
+        onChange={handleFileUpload}
+      />
 
       {/* QUICK ADD EXPENSE MODAL */}
       {showQuickAdd && (
