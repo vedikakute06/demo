@@ -30,3 +30,15 @@ async def add_transaction(txn: Transaction, db = Depends(get_database)):
         print("🔥 ERROR:", e)
         traceback.print_exc()
         return {"error": str(e)}
+
+@router.get("/{user_id}")
+async def get_transactions(user_id: str, db = Depends(get_database)):
+    try:
+        txns = await db["transactions"].find({"user_id": user_id}).sort("created_at", -1).to_list(100)
+        for t in txns:
+            t["_id"] = str(t["_id"])
+        return txns
+    except Exception as e:
+        print("🔥 ERROR:", e)
+        traceback.print_exc()
+        return {"error": str(e)}

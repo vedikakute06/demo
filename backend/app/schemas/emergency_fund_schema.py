@@ -1,13 +1,13 @@
+# app/schemas/emergency_fund_schema.py
+
 from pydantic import BaseModel
-from typing import Literal
 import datetime
+from typing import Literal
 
 
 class EmergencyFundInput(BaseModel):
     user_id: str
-    monthly_expense: float
     desired_months: int
-    current_emergency_savings: float
 
 
 class EmergencyFundResponse(BaseModel):

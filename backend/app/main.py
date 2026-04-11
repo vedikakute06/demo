@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.database import connect_to_mongo, close_mongo_connection, get_database
 from app.routes.behavior import router as behavior_router
@@ -14,7 +15,7 @@ from app.routes.budget import router as budget_router
 from app.routes.user import router as user_router
 from app.routes.emergency_fund import router as emergency_router
 
-print("🔥 main.py LOADED")
+print("main.py LOADED")
 
 # 🔁 Lifespan
 @asynccontextmanager
@@ -26,10 +27,19 @@ async def lifespan(app: FastAPI):
 # ✅ CREATE APP FIRST
 app = FastAPI(lifespan=lifespan)
 
+# ✅ CORS — allow frontend to call backend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5175",  "http://localhost:5174", "http://localhost:5173", "http://127.0.0.1:5174"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # ✅ IMPORT ROUTER AFTER APP CREATION
 from app.routes.transactions import router as transactions_router
 
-print("🔥 router imported")
+print("router imported")
 
 # ✅ INCLUDE ROUTER
 app.include_router(transactions_router)
