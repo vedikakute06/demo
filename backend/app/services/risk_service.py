@@ -5,10 +5,22 @@ from bson import ObjectId
 import smtplib
 from email.mime.text import MIMEText
 import asyncio
+from dotenv import load_dotenv
+
+load_dotenv()
 
 def send_alert_email(user_email: str, score: int, alerts: list):
-    sender_email = os.getenv("EMAIL_SENDER", "your_email@gmail.com")
-    sender_password = os.getenv("EMAIL_PASSWORD", "app_password")
+    sender_email = os.getenv("EMAIL_SENDER")
+    sender_password = os.getenv("EMAIL_PASSWORD")
+    
+    if not sender_email or not sender_password:
+        print("❌ EMAIL Error: Missing EMAIL_SENDER or EMAIL_PASSWORD in .env")
+        return
+
+    # Clean password in case user left spaces from Google's display
+    sender_password = sender_password.replace(" ", "")
+
+    print(f"📧 Attempting to send Risk Alert email to {user_email}...")
 
     alert_text = "\n".join([f"- {a}" for a in alerts])
     body = f"Hello,\n\nYour financial risk score has dropped to {score}/100 and is now considered HIGH RISK.\n\nActive Alerts:\n{alert_text}\n\nPlease review your dashboard and consider adjusting your budget.\n\nRegards,\nYour Financial AI Advisor"
@@ -97,12 +109,15 @@ async def compute_risk(user_id: str):
     score = max(score, 0)
 
   
-    if score < 40:
+    if score <= 40:
         level = "High"
         user_email = user.get("email")
+        print(f"🚩 High Risk Detected! Score: {score}, User Email: {user_email}")
         # Trigger email alert for high risk score
         if user_email:
             asyncio.create_task(asyncio.to_thread(send_alert_email, user_email, score, alerts))
+        else:
+            print("⚠️ Skipping email: User has no email address in profile.")
     elif score < 70:
         level = "Medium"
     else:

@@ -16,6 +16,9 @@ from app.routes.user import router as user_router
 from app.routes.emergency_fund import router as emergency_router
 from app.routes.ai import router as ai_router
 from app.routes.upload_routes import router as upload_router
+from dotenv import load_dotenv
+
+load_dotenv()
 
 print("main.py LOADED")
 
