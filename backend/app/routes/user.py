@@ -92,7 +92,7 @@ async def complete_onboarding(user_id: str, data: dict):
         {"$set": update_data}
     )
 
-    if result.modified_count == 0:
+    if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="User not found")
 
     return {"message": "Onboarding completed"}
