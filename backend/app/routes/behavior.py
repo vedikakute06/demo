@@ -1,30 +1,32 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from app.schemas.behavior import BehaviorAnalysisRequest
-from app.ml.behavior_prediction import predict_behavior
+from app.services.behavior_service import analyze_user_behavior
 from app.database import get_database
-from datetime import datetime, timezone
 
 router = APIRouter(prefix="/behavior", tags=["Behavior Analysis"])
 
+# ✅ POST → Run ML + Save
 @router.post("/analyze")
 async def analyze_behavior_endpoint(data: BehaviorAnalysisRequest):
-    result = predict_behavior(data)
-    
-    # Save insights to MongoDB
-    db = get_database()
-    
-    document = {
-        "user_id": data.user_id,
-        "cluster": result["cluster"],
-        "insights": result["insights"],
-        "confidence": result["confidence"],
-        "updated_at": datetime.now(timezone.utc)
-    }
-    
-    # MongoDB operations are async when using Motor
-    await db["behavior_insights"].insert_one(document)
-    
+    result = await analyze_user_behavior(data.user_id)
+
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+
     return {
         "prediction": result,
         "saved_to_db": True
     }
+
+# ✅ GET → Fetch stored insights
+@router.get("/analyze/{user_id}")
+async def get_behavior_insights(user_id: str):
+    db = get_database()
+
+    cursor = db["behaviour_insights"].find({"user_id": user_id})
+    insights = await cursor.to_list(length=100)
+
+    for insight in insights:
+        insight["_id"] = str(insight["_id"])
+
+    return {"insights": insights}

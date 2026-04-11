@@ -1,103 +1,68 @@
 from app.database import get_database
-from app.schemas.goal_schema import GoalCreate, GoalResponse
-import uuid
-import datetime
+from datetime import datetime
+from bson import ObjectId
 
-class GoalService:
-    @staticmethod
-    def calculate_progress(current_saved: float, target_amount: float) -> float:
-        if target_amount <= 0:
-            return 100.0
-        return min((current_saved / target_amount) * 100, 100.0)
+def calculate_months(deadline_str):
+    today = datetime.now()
+    deadline = datetime.strptime(deadline_str, "%Y-%m-%d")
 
-    @staticmethod
-    def calculate_monthly_required(target_amount: float, current_saved: float, timeline_months: int) -> float:
-        if timeline_months <= 0:
-            return 0.0
-        remaining = max(target_amount - current_saved, 0)
-        return remaining / timeline_months
+    months = (deadline.year - today.year) * 12 + (deadline.month - today.month)
+    return max(months, 1)
 
-    @staticmethod
-    async def create_goal(goal_data: GoalCreate) -> GoalResponse:
-        db = get_database()
-        goal_id = str(uuid.uuid4())
-        now = datetime.datetime.utcnow()
-        
-        monthly_required = GoalService.calculate_monthly_required(
-            goal_data.target_amount, 
-            goal_data.current_saved, 
-            goal_data.timeline_months
-        )
-        progress = GoalService.calculate_progress(
-            goal_data.current_saved, 
-            goal_data.target_amount
-        )
 
-        goal_dict = goal_data.dict()
-        goal_dict.update({
-            "goal_id": goal_id,
-            "status": "active",
-            "monthly_required": monthly_required,
-            "progress": progress,
-            "created_at": now,
-            "updated_at": now
-        })
+async def create_goal(user_id: str, data: dict):
+    db = get_database()
 
-        await db.goals.insert_one(goal_dict)
-        return GoalResponse(**goal_dict)
+    # ✅ Check user
+    user = None
+    if ObjectId.is_valid(user_id):
+        user = await db["user"].find_one({"_id": ObjectId(user_id)})
+    if not user:
+        user = await db["user"].find_one({"_id": user_id})
 
-    @staticmethod
-    async def get_user_goals(user_id: str) -> list[GoalResponse]:
-        db = get_database()
-        cursor = db.goals.find({"user_id": user_id})
-        goals = []
-        async for doc in cursor:
-            # Recompute on the fly or just use stored values. Standard is calculating on the fly if progress can change externally, but here we just return DB state
-            # Progress can be recomputed to ensure accuracy
-            doc['progress'] = GoalService.calculate_progress(doc['current_saved'], doc['target_amount'])
-            doc['monthly_required'] = GoalService.calculate_monthly_required(doc['target_amount'], doc['current_saved'], doc['timeline_months'])
-            goals.append(GoalResponse(**doc))
-        return goals
+    if not user:
+        return {"error": "User not found"}
 
-    @staticmethod
-    async def update_goal_savings(goal_id: str, amount: float):
-        db = get_database()
-        
-        # Need to fetch the goal first to add to current_saved and recompute required
-        print(f"Goal ID for update: {goal_id}")
-        goal = await db.goals.find_one({"goal_id": goal_id})
-        print(f"Goal found: {goal}")
-        
-        if not goal:
-            raise ValueError("Goal not found")
+    # ✅ Get savings (finance or fallback)
+    finance = await db["finance"].find_one({"user_id": user_id})
 
-        new_saved = goal["current_saved"] + amount
-        
-        now = datetime.datetime.utcnow()
-        monthly_req = GoalService.calculate_monthly_required(
-            goal["target_amount"], 
-            new_saved, 
-            goal["timeline_months"]
-        )
-        progress = GoalService.calculate_progress(
-            new_saved, 
-            goal["target_amount"]
-        )
-        
-        # Update status if completed
-        status = "completed" if new_saved >= goal["target_amount"] else "active"
+    if finance:
+        current_saved = finance.get("monthly_savings", 0)
+    else:
+        current_saved = 0
 
-        await db.goals.update_one(
-            {"goal_id": goal_id},
-            {"$set": {
-                "current_saved": new_saved,
-                "monthly_required": monthly_req,
-                "progress": progress,
-                "status": status,
-                "updated_at": now
-            }}
-        )
+    # ✅ Calculate months
+    months = calculate_months(data["deadline"])
 
-        # Return updated goal
-        updated_goal = await db.goals.find_one({"goal_id": goal_id})
-        return GoalResponse(**updated_goal)
+    # ✅ Remaining amount
+    remaining = data["target_amount"] - current_saved
+
+    # ✅ Monthly saving required
+    monthly_required = round(remaining / months, 2)
+
+    # ✅ Check affordability
+    status = "active"
+    if finance:
+        savings = finance.get("monthly_savings", 0)
+        if monthly_required > savings:
+            status = "risky"
+
+    # 📦 Final document
+    goal = {
+        "user_id": user_id,
+        "title": data["title"],
+        "goal_type": data["goal_type"],
+        "target_amount": data["target_amount"],
+        "current_saved": current_saved,
+        "deadline": data["deadline"],
+        "monthly_saving_required": monthly_required,
+        "status": status,
+        "created_at": datetime.now().strftime("%Y-%m-%d")
+    }
+
+    # 💾 Save
+    result = await db["goals"].insert_one(goal)
+
+    goal["_id"] = str(result.inserted_id)
+
+    return goal

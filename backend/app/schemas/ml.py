@@ -1,8 +1,6 @@
 from pydantic import BaseModel
 
 class WhatIfInput(BaseModel):
-    income: float
-    expense: float
-    saving: float
+    user_id: str
     purchase_cost: float
     time: float

@@ -20,6 +20,9 @@ def extract_features(transactions):
 
 def predict_behavior(data):
     transactions = [t.model_dump() for t in data.transactions]
+    return predict_behavior_from_transactions(transactions)
+
+def predict_behavior_from_transactions(transactions):
     features = extract_features(transactions)
     features_array = np.array([features])
     

@@ -9,4 +9,3 @@ class Transaction(BaseModel):
 
 class BehaviorAnalysisRequest(BaseModel):
     user_id: str
-    transactions: List[Transaction]

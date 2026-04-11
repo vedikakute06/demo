@@ -1,40 +1,70 @@
 from app.database import get_database
-from app.schemas.financial_health_schema import FinancialHealthResponse, FinancialHealthBreakdown
+from app.schemas.financial_health_schema import FinancialHealthResponse
 import datetime
+
 
 class FinancialHealthService:
 
     @staticmethod
-    def _get_mock_user_financial_data(user_id: str):
-        # MOCK DATA since we don't have these in UserService yet
-        # Returning defaults to allow calculation
+    async def _get_user_financial_data(user_id: str):
+        db = get_database()
+
+        transactions = await db["transactions"].find(
+            {"user_id": user_id}
+        ).to_list(length=1000)
+
+        if not transactions:
+            return None
+
+        income = 0
+        expense = 0
+        high_spend_count = 0
+
+        for t in transactions:
+            if t["type"] == "income":
+                income += t["amount"]
+            else:
+                expense += t["amount"]
+
+                if t["amount"] > 5000:
+                    high_spend_count += 1
+
+        total_txns = len(transactions)
+
+        high_spend_ratio = (
+            high_spend_count / total_txns if total_txns > 0 else 0
+        )
+
+        savings = income - expense
+        emergency_fund = max(savings, 0)
+        monthly_expense = expense
+
         return {
-            "income": 100000,
-            "total_spending": 60000,
-            "high_spend_ratio": 0.2, # 20%
-            "emergency_fund": 180000, # 3x of monthly_expense (60k)
-            "monthly_expense": 60000
+            "income": income,
+            "expense": expense,
+            "high_spend_ratio": high_spend_ratio,
+            "emergency_fund": emergency_fund,
+            "monthly_expense": monthly_expense
         }
 
     @staticmethod
-    def calculate_health_score(user_id: str) -> dict:
-        data = FinancialHealthService._get_mock_user_financial_data(user_id)
-        
+    def calculate_health_score(data: dict):
+
         income = data["income"]
-        total_spending = data["total_spending"]
+        expense = data["expense"]
         high_spend_ratio = data["high_spend_ratio"]
         emergency_fund = data["emergency_fund"]
         monthly_expense = data["monthly_expense"]
 
-        # 1. Savings Score (40%)
-        savings = income - total_spending
+        # 🔹 Savings Score (40%)
+        savings = income - expense
         savings_ratio = savings / income if income > 0 else 0
-        score_savings = min(savings_ratio * 100, 100)
+        savings_score = min(savings_ratio * 100, 100)
 
-        # 2. Spending Score (30%)
-        score_spending = max(100 - (high_spend_ratio * 100), 0)
+        # 🔹 Spending Score (30%)
+        spending_score = max(100 - (high_spend_ratio * 100), 0)
 
-        # 3. Risk Score (30%)
+        # 🔹 Risk Score (30%)
         if emergency_fund >= 6 * monthly_expense:
             risk_score = 100
         elif emergency_fund >= 3 * monthly_expense:
@@ -42,22 +72,22 @@ class FinancialHealthService:
         else:
             risk_score = 40
 
-        # Final Score
+        # 🔹 Final Score
         final_score = (
-            0.4 * score_savings +
-            0.3 * score_spending +
+            0.4 * savings_score +
+            0.3 * spending_score +
             0.3 * risk_score
         )
 
         return {
             "score": round(final_score, 2),
-            "savings_score": round(score_savings, 2),
-            "spending_score": round(score_spending, 2),
+            "savings_score": round(savings_score, 2),
+            "spending_score": round(spending_score, 2),
             "risk_score": round(risk_score, 2)
         }
 
     @staticmethod
-    def _evaluate_status(score: float) -> str:
+    def _evaluate_status(score: float):
         if score >= 80:
             return "excellent"
         elif score >= 50:
@@ -66,27 +96,53 @@ class FinancialHealthService:
             return "poor"
 
     @staticmethod
-    async def process_financial_health(user_id: str) -> FinancialHealthResponse:
+    async def process_financial_health(user_id: str):
         db = get_database()
-        
-        calc_result = FinancialHealthService.calculate_health_score(user_id)
-        status = FinancialHealthService._evaluate_status(calc_result["score"])
+
+        data = await FinancialHealthService._get_user_financial_data(user_id)
+
+        # ✅ HANDLE NO DATA (FIXED)
+        if data is None:
+            health_data = {
+                "user_id": user_id,
+                "score": 0,
+                "breakdown": {
+                    "savings_score": 0,
+                    "spending_score": 0,
+                    "risk_score": 0
+                },
+                "status": "poor",  # must match schema
+                "created_at": datetime.datetime.utcnow()
+            }
+
+            await db["financial_health"].update_one(
+                {"user_id": user_id},
+                {"$set": health_data},
+                upsert=True
+            )
+
+            return FinancialHealthResponse(**health_data)
+
+        # ✅ NORMAL FLOW
+        result = FinancialHealthService.calculate_health_score(data)
+        status = FinancialHealthService._evaluate_status(result["score"])
+
         now = datetime.datetime.utcnow()
 
         health_data = {
             "user_id": user_id,
-            "score": calc_result["score"],
+            "score": result["score"],
             "breakdown": {
-                "savings_score": calc_result["savings_score"],
-                "spending_score": calc_result["spending_score"],
-                "risk_score": calc_result["risk_score"]
+                "savings_score": result["savings_score"],
+                "spending_score": result["spending_score"],
+                "risk_score": result["risk_score"]
             },
             "status": status,
-            "updated_at": now
+            "created_at": now
         }
 
-        # Upsert logic
-        await db.financial_health.update_one(
+        # ✅ UPSERT
+        await db["financial_health"].update_one(
             {"user_id": user_id},
             {"$set": health_data},
             upsert=True
