@@ -15,10 +15,10 @@ except Exception as e:
 
 
 def generate_ai_message(decision, future_savings):
-    if decision == "Not Recommended ❌":
+    if decision == "Not Recommended":
         return "This purchase may lead to financial instability. Consider postponing it."
 
-    elif decision == "Risky ⚠️":
+    elif decision == "Risky":
         return f"This purchase is risky. Your savings may drop significantly, but you could recover to ₹{future_savings:.2f} over time."
 
     else:
@@ -27,7 +27,7 @@ def generate_ai_message(decision, future_savings):
 
 def predict_what_if_from_values(income, expense, saving, purchase_cost, time):
 
-    # ✅ Correct feature order
+    # Correct feature order
     input_features = np.array([[income, expense, saving, purchase_cost, time]])
 
     score = 0
@@ -35,22 +35,22 @@ def predict_what_if_from_values(income, expense, saving, purchase_cost, time):
         pred = what_if_model.predict(input_features)
         score = float(pred[0])
 
-    # 💡 Financial calculations
+    # Financial calculations
     remaining_savings = saving - purchase_cost
     monthly_savings = income - expense
     future_savings = remaining_savings + (monthly_savings * time)
 
-    # 📊 Decision logic
+    # Decision logic
     if remaining_savings < 0:
-        decision = "Not Recommended ❌"
+        decision = "Not Recommended"
         reason = "Purchase exceeds your current savings"
 
     elif remaining_savings < (saving * 0.3):
-        decision = "Risky ⚠️"
+        decision = "Risky"
         reason = "Savings will reduce significantly"
 
     else:
-        decision = "Safe to Buy ✅"
+        decision = "Safe to Buy"
         reason = "You still maintain healthy savings"
 
     return {

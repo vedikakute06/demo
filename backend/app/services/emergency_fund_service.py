@@ -1,58 +1,79 @@
+from bson import ObjectId
+from fastapi import HTTPException
 from app.database import get_database
-from app.schemas.emergency_fund_schema import (
-    EmergencyFundResponse,
-    EmergencyFundInput
-)
+from app.schemas.emergency_fund_schema import EmergencyFundResponse, EmergencyFundInput
 import datetime
 
 
 class EmergencyFundService:
 
+    # =========================
+    # GET Emergency Fund
+    # =========================
     @staticmethod
     async def get_emergency_fund(user_id: str):
         db = get_database()
 
-        fund = await db["emergency_fund"].find_one({
-            "user_id": user_id
-        })
+        # ✅ Validate ObjectId
+        try:
+            user_obj_id = ObjectId(user_id)
+        except:
+            raise HTTPException(status_code=404, detail="Invalid user id format")
+
+        # ✅ Check user exists
+        user = await db["user"].find_one({"_id": user_obj_id})
+
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # ✅ Fetch emergency fund
+        fund = await db["emergency_fund"].find_one({"user_id": user_id})
 
         if not fund:
-            return EmergencyFundResponse(
-                user_id=user_id,
-                monthly_expense=0,
-                desired_months=0,
-                recommended_fund=0,
-                current_emergency_savings=0,
-                gap=0,
-                status="critical",
-                last_updated=datetime.datetime.utcnow()
-            )
+            raise HTTPException(status_code=404, detail="Emergency fund not found")
 
         fund.pop("_id", None)
 
-        # ✅ Fix datetime
-        if isinstance(fund.get("last_updated"), str):
-            try:
-                fund["last_updated"] = datetime.datetime.strptime(
-                    fund["last_updated"], "%Y-%m-%d"
-                )
-            except:
-                fund["last_updated"] = datetime.datetime.utcnow()
-
-        return EmergencyFundResponse(**fund)
+        return fund
 
 
+    # =========================
+    # POST: Calculate + Save
+    # =========================
     @staticmethod
     async def calculate_and_save(data: EmergencyFundInput):
         db = get_database()
 
-        # ✅ calculations
-        recommended_fund = data.monthly_expense * data.desired_months
-        gap = recommended_fund - data.current_emergency_savings
+        user_id = data.user_id
+        desired_months = data.desired_months
 
-        gap = max(gap, 0)
+        # ✅ Validate ObjectId
+        try:
+            user_obj_id = ObjectId(user_id)
+        except:
+            raise HTTPException(status_code=404, detail="Invalid user id format")
 
-        # ✅ status logic
+        # ✅ Check user exists
+        user = await db["user"].find_one({"_id": user_obj_id})
+
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # ✅ Get finance data
+        finance = await db["finance"].find_one({"user_id": user_id})
+
+        if not finance:
+            raise HTTPException(status_code=404, detail="Finance data not found")
+
+        # 📊 Extract values
+        monthly_expense = finance.get("total_expenses", 0)
+        current_emergency_savings = finance.get("monthly_savings", 0)
+
+        # 🧮 Calculations
+        recommended_fund = monthly_expense * desired_months
+        gap = max(recommended_fund - current_emergency_savings, 0)
+
+        # ⚖️ Status logic
         if gap == 0:
             status = "good"
         elif gap <= recommended_fund * 0.5:
@@ -60,23 +81,23 @@ class EmergencyFundService:
         else:
             status = "critical"
 
-        now = datetime.datetime.utcnow()
-
+        # 📦 Result
         result = {
-            "user_id": data.user_id,
-            "monthly_expense": data.monthly_expense,
-            "desired_months": data.desired_months,
+            "user_id": user_id,
+            "monthly_expense": monthly_expense,
+            "desired_months": desired_months,
             "recommended_fund": recommended_fund,
-            "current_emergency_savings": data.current_emergency_savings,
+            "current_emergency_savings": current_emergency_savings,
             "gap": gap,
             "status": status,
-            "last_updated": now
+            "last_updated": datetime.datetime.utcnow()
         }
 
+        # 💾 Save to DB
         await db["emergency_fund"].update_one(
-            {"user_id": data.user_id},
+            {"user_id": user_id},
             {"$set": result},
             upsert=True
         )
 
-        return EmergencyFundResponse(**result)
+        return result
