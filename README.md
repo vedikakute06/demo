@@ -1,4 +1,4 @@
-# Project Demo
+# WealthLens
 
 This is a modern web application consisting of a **React (Vite)** frontend and a **FastAPI** backend with **MongoDB**.
 
